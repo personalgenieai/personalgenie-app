@@ -1,9 +1,217 @@
 <!DOCTYPE html>
 <html lang="en">
-    <body>
-        <!-- Welcome Page -->
-        <div class="welcome-page">
-            <div class="welcome-message">Welcome, demonbaby</div>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Login Welcome</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .login-page {
+            display: block;
+        }
+
+        .welcome-page {
+            display: none;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 1.5rem;
+            font-size: 1.8rem;
+        }
+
+        .welcome-message {
+            color: #4285f4;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .user-info {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .user-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin: 0 auto 1rem;
+            display: block;
+        }
+
+        .user-email {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .g_id_signin {
+            margin: 1rem 0;
+        }
+
+        .login-description {
+            color: #666;
+            margin-bottom: 2rem;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Login Page -->
+        <div id="loginPage" class="login-page">
+            <h1>Welcome!</h1>
+            <p class="login-description">
+                Please sign in with your Google account to continue
+            </p>
+            <div id="g_id_onload"
+                 data-client_id="202452428291-qflifn8qfe92ojbbac5dqqiaajd1vpap.apps.googleusercontent.com"
+                 data-context="signin"
+                 data-ux_mode="popup"
+                 data-callback="handleCredentialResponse"
+                 data-auto_prompt="false">
+            </div>
+            <div class="g_id_signin"
+                 data-type="standard"
+                 data-shape="rectangular"
+                 data-theme="outline"
+                 data-text="signin_with"
+                 data-size="large"
+                 data-logo_alignment="left">
+            </div>
         </div>
-    </body>
+
+        <!-- Welcome Page -->
+        <div id="welcomePage" class="welcome-page">
+            <h1>Dashboard</h1>
+            <div class="welcome-message">Welcome, <span id="userName">User</span>!</div>
+            <div class="user-info">
+                <img id="userAvatar" src="" alt="User Avatar" class="user-avatar" style="display: none;">
+                <div id="userEmail" class="user-email"></div>
+            </div>
+            <button onclick="signOut()" class="logout-btn">Sign Out</button>
+        </div>
+    </div>
+
+    <script>
+        // Store user data
+        let currentUser = null;
+
+        // Handle the credential response from Google
+        function handleCredentialResponse(response) {
+            // Decode the JWT token to get user information
+            const responsePayload = decodeJwtResponse(response.credential);
+            
+            currentUser = {
+                name: responsePayload.name,
+                email: responsePayload.email,
+                picture: responsePayload.picture
+            };
+
+            // Update the welcome page with user info
+            document.getElementById('userName').textContent = currentUser.name;
+            document.getElementById('userEmail').textContent = currentUser.email;
+            
+            if (currentUser.picture) {
+                const avatar = document.getElementById('userAvatar');
+                avatar.src = currentUser.picture;
+                avatar.style.display = 'block';
+            }
+
+            // Show welcome page and hide login page
+            showWelcomePage();
+        }
+
+        // Decode JWT token
+        function decodeJwtResponse(token) {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        }
+
+        // Show welcome page
+        function showWelcomePage() {
+            document.getElementById('loginPage').style.display = 'none';
+            document.getElementById('welcomePage').style.display = 'block';
+        }
+
+        // Show login page
+        function showLoginPage() {
+            document.getElementById('loginPage').style.display = 'block';
+            document.getElementById('welcomePage').style.display = 'none';
+        }
+
+        // Sign out function
+        function signOut() {
+            currentUser = null;
+            // Reset user info
+            document.getElementById('userName').textContent = 'User';
+            document.getElementById('userEmail').textContent = '';
+            document.getElementById('userAvatar').style.display = 'none';
+            
+            // Show login page
+            showLoginPage();
+        }
+
+        // Initialize on page load
+        window.onload = function() {
+            // Check if there's a stored user session (in a real app, you'd use proper session management)
+            showLoginPage();
+        };
+    </script>
+
+    <!-- Instructions for setup -->
+    <div style="position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px; font-size: 12px; max-width: 300px; display: none;" id="instructions">
+        <strong>Setup Instructions:</strong><br>
+        1. Get a Google Client ID from Google Cloud Console<br>
+        2. Replace "YOUR_GOOGLE_CLIENT_ID" with your actual client ID<br>
+        3. Add your domain to authorized origins
+    </div>
+</body>
 </html>
