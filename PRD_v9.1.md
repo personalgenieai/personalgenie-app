@@ -3,7 +3,7 @@
 
 | | |
 |---|---|
-| **Version** | 9.2 — Onboarding + Maturity Tracker |
+| **Version** | 9.3 — Person Facts + Recommendations + Explainability |
 | **Status** | Build-Ready |
 | **Date** | March 2026 (updated 2026-03-10) |
 | **Platform** | Apple Ecosystem — iPhone · Apple Watch · Mac |
@@ -235,6 +235,66 @@ CREATE TABLE relationship_signals (
 );
 ```
 
+### 4.3b Person Facts
+
+Structured, queryable facts about a specific person in the user's life. Distinct from:
+- **Memories** — episodic moments ("the Valentine's dinner")
+- **Relationship signals** — behavioral events ("messaged 3 times this week")
+- **Preferences** — the user's own preferences
+
+Person facts are stable, confirmable, and time-bounded where relevant:
+
+```sql
+CREATE TABLE person_facts (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id   UUID REFERENCES users(id),
+  person_id       UUID REFERENCES people(id),
+  -- NULL person_id = fact about the owner themselves
+
+  fact_key        TEXT NOT NULL,
+  -- e.g. "monthly_support_amount" | "support_end_date"
+  --      "job_search_status" | "base_city" | "sobriety_status"
+  --      "relationship_goal" | "communication_style"
+
+  fact_value      TEXT NOT NULL,
+  fact_type       TEXT DEFAULT 'text',
+  -- text | number | date | boolean | json
+
+  domain          TEXT,
+  -- relationships | health | finance | logistics | goals
+
+  confidence      FLOAT DEFAULT 1.0,
+  -- 1.0 = user_stated | 0.7 = genie_inferred | 0.5 = from_messages
+
+  source          TEXT DEFAULT 'user_stated',
+  -- user_stated | genie_inferred | imessage_analysis | session
+
+  expires_at      TIMESTAMPTZ,
+  -- NULL = permanent. Time-bounded facts expire automatically.
+
+  user_confirmed  BOOLEAN DEFAULT FALSE,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(owner_user_id, person_id, fact_key)
+  -- one canonical value per fact per person — update in place
+);
+```
+
+**Example facts (TJ):**
+
+| fact_key | fact_value | source |
+|---|---|---|
+| `monthly_support_amount` | `1000` | user_stated |
+| `support_end_date` | `2026-08-01` | user_stated |
+| `support_pre_august_type` | `gift_no_payback` | user_stated |
+| `support_post_august_type` | `loan_when_stable` | user_stated |
+| `job_search_status` | `applying_independently` | user_stated |
+| `interview_weakness` | `confidence_not_effort` | user_stated |
+| `relationship_goal` | `equal_friendship` | user_stated |
+
+---
+
 ### 4.4 Domain 3 — Preferences
 
 ```sql
@@ -393,9 +453,111 @@ CREATE TABLE reasoning_traces (
 }
 ```
 
+### 4.8b Recommendations
+
+Actionable advice the Genie has surfaced, with full reasoning chain stored for explainability. Every recommendation is traceable back to the specific observations, patterns, and goals that produced it.
+
+```sql
+CREATE TABLE recommendations (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id     UUID REFERENCES users(id),
+  person_id         UUID REFERENCES people(id),
+  -- NULL = recommendation about the user themselves
+
+  title             TEXT NOT NULL,
+  -- "The TJ Financial Bridge Conversation"
+
+  recommendation_text TEXT NOT NULL,
+  -- plain language: what to do
+
+  script            TEXT,
+  -- optional: exact words to say, verbatim
+
+  timing            TEXT,
+  -- right_now | this_week | plan_ahead | when_ready
+
+  domain            TEXT,
+  -- relationships | health | finance | exercise | nutrition | self
+
+  status            TEXT DEFAULT 'pending',
+  -- pending | delivered | acted_on | dismissed | snoozed | expired
+
+  reasoning_chain   JSONB NOT NULL DEFAULT '{}',
+  -- full reasoning — see shape below
+
+  delivered_at      TIMESTAMPTZ,
+  user_response     TEXT,    -- what the user said after receiving it
+  outcome           TEXT,    -- acted_on | dismissed | modified | deferred
+  outcome_notes     TEXT,    -- what actually happened / user correction
+
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**reasoning_chain shape:**
+
+```json
+{
+  "observations": [
+    "Leo has raised card separation 3+ times without resolution",
+    "TJ applying independently — dependency is confidence not motivation",
+    "Leo's severance ends August — external constraint already communicated"
+  ],
+  "pattern_identified": "Leo's generosity outpaces TJ's independence development",
+  "goal": "Transition to equal friendship with no financial residue",
+  "why_this_approach": "August is external not personal — removes withdrawal sting",
+  "why_this_framing": "Pre-August as gift removes shame; post-August loan restores TJ's agency",
+  "what_not_to_do": "No formal agreement, no dollar total, do not send over text",
+  "fact_refs": ["monthly_support_amount", "support_end_date", "job_search_status"],
+  "memory_refs": ["Valentine dinner", "Credit card conversation(s)"]
+}
+```
+
+**Why this matters:** When the user asks *"why did you suggest that?"* six months later, the Genie reads the reasoning chain and explains itself in plain language — not reconstructed from scratch, but retrieved from what it actually knew at the time.
+
+---
+
 ### 4.9 Domain 8 — Skill State
 
 Each installed skill has its own namespaced state table. See Section 5 for full schema.
+
+---
+
+### 4.10 Explainability Architecture
+
+Every significant Genie output is traceable. The three layers work together:
+
+```
+person_facts        →  what the Genie knew (inputs)
+reasoning_chain     →  why it concluded what it did (logic)
+recommendations     →  what it said and what happened (output + outcome)
+```
+
+**How explainability works in practice:**
+
+When the user asks *"why did you suggest that?"*:
+
+1. Genie looks up the `recommendation` by title or recency
+2. Reads `reasoning_chain.observations` — what it saw in the data
+3. Reads `reasoning_chain.pattern_identified` — what pattern it named
+4. Reads `reasoning_chain.goal` — what the user wanted
+5. Reads `reasoning_chain.why_this_framing` — why those specific words
+
+Response in the Genie's voice:
+> *"When we talked in March, you'd raised the credit card separation three times and it hadn't happened. TJ was applying to jobs on his own — the problem wasn't motivation, it was confidence. August was already the agreed end point, so I used it as the anchor rather than introducing a new boundary. The gift/loan framing came from what I know about TJ: shame about dependency is the real friction, not the money itself."*
+
+**What is NOT reconstructed:** The Genie never re-derives its reasoning from raw messages. It reads the stored chain. This means the explanation is stable and auditable — it won't shift based on new data unless the user explicitly asks the Genie to re-evaluate.
+
+**Three storage layers at a glance:**
+
+| Layer | Table | What it stores | Queryable? |
+|---|---|---|---|
+| Facts | `person_facts` | Stable, confirmable facts about a person | Yes — by key |
+| Memories | `moments` | Episodic, contextual moments | By person, emotion, topic |
+| Preferences | `preferences` | User's own behavioral patterns | By domain |
+| Decisions | `reasoning_traces` | All Genie actions with rationale | By action_type |
+| Recommendations | `recommendations` | Actionable advice + script + reasoning chain + outcome | By person, domain, status |
 
 ---
 
