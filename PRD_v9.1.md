@@ -3,7 +3,7 @@
 
 | | |
 |---|---|
-| **Version** | 9.3 — Person Facts + Recommendations + Explainability |
+| **Version** | 9.4 — Socratic Onboarding |
 | **Status** | Build-Ready |
 | **Date** | March 2026 (updated 2026-03-10) |
 | **Platform** | Apple Ecosystem — iPhone · Apple Watch · Mac |
@@ -20,6 +20,7 @@
 5. [Skills Platform](#5-skills-platform)
 5A. [Skill Sub-Brain Architecture](#5a-skill-sub-brain-architecture)
 6. [Onboarding Experience](#6-onboarding-experience)
+6A. [Socratic Onboarding — Invited Users](#66-socratic-onboarding--invited-users)
 7. [Daily Operating Rhythm](#7-daily-operating-rhythm)
 8. [Wearable Memory Engine](#8-wearable-memory-engine)
 9. [Overnight Processing Engine](#9-overnight-processing-engine)
@@ -1144,6 +1145,155 @@ Gaps surface conversationally:
 > *"I know your training schedule well but I'm almost blind on your nutrition. What did you eat yesterday? Just roughly — I'm building a picture."*
 
 Gap completion is the primary engagement mechanic in month one.
+
+---
+
+### 6.6 Socratic Onboarding — Invited Users
+
+When a new user is invited by an existing user (e.g. Leo invites TJ), the Genie has a head start: third-party signals from the inviting user's sessions, a shared text chain, and structured person_facts about the new user before they've said a word.
+
+This creates a fundamentally different onboarding path — and a powerful one.
+
+**The core principle:** Third-party signals inform question selection, never answer content. The Genie never says what it already knows. It asks questions whose answers it already has, lets the user arrive at the insight themselves, then reflects it back shaped.
+
+This is **Socratic Onboarding**.
+
+---
+
+#### 6.6.1 Why It's Different
+
+A standard new user starts from zero. The Genie knows nothing. Every session is information gathering.
+
+An invited user's Genie starts with:
+- The shape of a key relationship (from the inviter's iMessage history)
+- Structured facts the inviting Genie surfaced (via `third_party_signals`, abstracted)
+- The inviter's stated goals for the relationship
+- What the inviting Genie learned the new user is carrying emotionally
+
+The Genie's job is not to recite this. It's to **ask the questions that let the new user say it themselves.**
+
+---
+
+#### 6.6.2 The Three-Act Structure
+
+**Act 1 — Disarm**
+
+The Genie opens by acknowledging the asymmetry transparently without revealing what it knows:
+
+> *"[Name] invited you here, so I already know a little about your world — but only their side of it. I'd rather hear yours.*
+>
+> *How are you doing right now — honestly? Not the version you'd tell someone who'd worry."*
+
+This does three things: signals the Genie has context, makes clear it wants the user's perspective, and opens with a question that bypasses the social performance layer.
+
+**Act 2 — Draw Out**
+
+The Genie uses the third-party signals to select questions that lead the user toward the topics that matter. It never states what it knows. It asks toward it.
+
+The question-selection logic (see 6.6.4) maps each signal type to a question pattern:
+
+| Signal | Question pattern |
+|---|---|
+| Financial tension | *"The financial side of things — is that a pressure point right now, or have you found a way to hold it lightly?"* |
+| Job uncertainty | *"How's the job search feeling — like something you're in control of, or more like you're waiting for something to land?"* |
+| Relationship asymmetry | *"What does it feel like being supported by someone you're that close to? Some people find it straightforward. Others find it sits in a weird way."* |
+| Emotional dependency | *"Is there anyone in your life right now who you feel like you can be fully honest with — not managing how they receive it?"* |
+| Confidence gap | *"When you walk into an interview, what's the version of yourself you're trying to be? Is it different from the version you actually are?"* |
+
+The user names the tension themselves. The Genie didn't put it there. It just asked the question that made the path visible.
+
+**Act 3 — Reflect and Recommend**
+
+Once the user has surfaced the thing they're carrying, the Genie reflects it back with a concrete shape:
+
+> *"Here's what I think could actually help. When you land — not before, just when you're stable — go back to Leo and say you want to pay back what he's given you during this stretch. Not because he'll ask. Because you'll want to.*
+>
+> *It won't be about the money for either of you. It'll be about the friendship you're building on the other side of this. Doing it on your terms, before anyone has to ask, is what closes it properly."*
+
+The recommendation carries weight because the user surfaced the discomfort five minutes earlier. The Genie gave it form. They arrived here together.
+
+---
+
+#### 6.6.3 The iMessage Invite (end of first session)
+
+After the first session, once the Genie has demonstrated value with limited data:
+
+> *"I can see the outline of your relationship with [Name] from what they shared when they set this up. But I'm only getting one angle.*
+>
+> *If you share your messages with me, I can read the actual thread — your side of it, not just theirs. What I suggest will be a lot more specific to you, rather than to the version of you that exists in someone else's story.*
+>
+> *You don't have to. But it changes what I'm able to do."*
+
+This ask is earned. The user just experienced a session where the Genie was clearly working with incomplete information and was honest about it. Data access is requested after demonstrated value — not at signup.
+
+---
+
+#### 6.6.4 Question Selection Schema
+
+The Genie's question-selection logic is stored and auditable:
+
+```sql
+CREATE TABLE socratic_question_templates (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  signal_type       TEXT NOT NULL,
+  -- financial_tension | job_uncertainty | relationship_asymmetry
+  -- emotional_dependency | confidence_gap | relational_shift
+  -- grief | resentment | unresolved_feeling
+
+  question_text     TEXT NOT NULL,
+  -- the actual question to ask
+
+  follow_up_text    TEXT,
+  -- optional follow-up if user gives a surface answer
+
+  leads_to_domain   TEXT,
+  -- relationships | health | finance | self | goals
+
+  intensity         TEXT DEFAULT 'medium',
+  -- light | medium | direct
+  -- light = safe opener, direct = goes straight to the nerve
+
+  use_after_turn    INTEGER DEFAULT 2,
+  -- don't ask in first N turns — let user settle first
+
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Selection logic:**
+1. At session start, load `third_party_signals` for the invited user
+2. Map each signal to matching `signal_type` in question templates
+3. Sort by `intensity` — start light, move to direct as trust builds
+4. Never ask two questions in the same domain consecutively
+5. If user answers a question with genuine depth — don't follow up, let it breathe
+
+---
+
+#### 6.6.5 The Sanitization Guarantee
+
+At no point does TJ's Genie reveal that Leo shared anything. The rules are absolute:
+
+| Forbidden | Permitted |
+|---|---|
+| *"Leo told me..."* | Questions that lead toward the same topic |
+| *"I know Leo thinks..."* | *"How does it feel from your side?"* |
+| *"He plans to..."* | Reflecting back what the user just said |
+| *"A conversation is coming..."* | Recommendations the user can act on independently |
+| Specific figures ($1K, August) unless user states them | Framing shaped by those figures without citing them |
+
+The test: **if you removed all the third-party signals, could this question still have been asked?** If yes, it's safe. If the question only makes sense because of what the other Genie said — it's not.
+
+---
+
+#### 6.6.6 Why This Is the Product's Most Powerful Moment
+
+Standard AI products ask you to fill in forms about yourself. The insight comes later, maybe.
+
+Socratic Onboarding inverts this. The Genie already knows the shape of what matters. It asks you toward it. You say the thing you've been carrying. It gives it form. You feel seen — not because the Genie told you something about yourself, but because it asked exactly the right question.
+
+That first session, for an invited user, is the highest-value moment in the entire product. It's when the user thinks: *"How did it know to ask that?"*
+
+The answer is: it knew. It just didn't say.
 
 ---
 

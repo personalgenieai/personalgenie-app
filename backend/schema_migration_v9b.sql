@@ -149,6 +149,116 @@ CREATE INDEX idx_recommendations_timing
     ON recommendations(owner_user_id, timing, status);
 
 -- ------------------------------------------------------------
+-- socratic_question_templates
+-- Question bank for Socratic Onboarding (Section 6.6).
+-- Maps third_party signal types to questions that lead the
+-- invited user toward the topic without revealing the source.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS socratic_question_templates (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    signal_type         TEXT NOT NULL,
+    -- financial_tension | job_uncertainty | relationship_asymmetry
+    -- emotional_dependency | confidence_gap | relational_shift
+    -- grief | resentment | unresolved_feeling
+
+    question_text       TEXT NOT NULL,
+    -- the actual question to ask
+
+    follow_up_text      TEXT,
+    -- optional follow-up if user gives a surface answer
+
+    leads_to_domain     TEXT,
+    -- relationships | health | finance | self | goals
+
+    intensity           TEXT NOT NULL DEFAULT 'medium',
+    -- light = safe opener | medium = goes a layer deeper | direct = straight to the nerve
+
+    use_after_turn      INTEGER DEFAULT 2,
+    -- don't ask before this turn number — let user settle first
+
+    created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Seed: question bank
+INSERT INTO socratic_question_templates
+    (signal_type, question_text, follow_up_text, leads_to_domain, intensity, use_after_turn)
+VALUES
+-- financial_tension
+('financial_tension',
+ 'The financial side of things — is that a pressure point right now, or have you found a way to hold it lightly?',
+ 'What does that feel like day to day?',
+ 'finance', 'medium', 2),
+
+('financial_tension',
+ 'When you think about where you want to be financially in six months — what does stable actually look like for you?',
+ NULL,
+ 'finance', 'light', 1),
+
+-- job_uncertainty
+('job_uncertainty',
+ 'How''s the job search feeling — like something you''re in control of, or more like you''re waiting for something to land?',
+ 'What''s the hardest part of it right now?',
+ 'goals', 'medium', 2),
+
+('job_uncertainty',
+ 'When you walk into an interview, what''s the version of yourself you''re trying to be? Is it different from the version you actually are?',
+ NULL,
+ 'self', 'direct', 3),
+
+-- relationship_asymmetry
+('relationship_asymmetry',
+ 'What does it feel like being supported by someone you''re that close to? Some people find it straightforward. Others find it sits in a weird way.',
+ 'Do you ever think about what it looks like from their side?',
+ 'relationships', 'direct', 3),
+
+('relationship_asymmetry',
+ 'Is there anything in that relationship that feels unresolved — not broken, just sitting there?',
+ NULL,
+ 'relationships', 'medium', 4),
+
+-- emotional_dependency
+('emotional_dependency',
+ 'Is there anyone in your life right now who you feel like you can be fully honest with — not managing how they receive it?',
+ 'What makes that possible with them?',
+ 'relationships', 'light', 1),
+
+-- confidence_gap
+('confidence_gap',
+ 'How do you feel about your own momentum right now — like you''re building something, or more like you''re waiting to feel ready?',
+ 'What would feeling ready actually look like?',
+ 'self', 'medium', 2),
+
+-- relational_shift
+('relational_shift',
+ 'How has that relationship changed over the last year or so — is it different from what it used to be?',
+ 'Is that change something you chose, or did it just happen?',
+ 'relationships', 'medium', 3),
+
+-- grief
+('grief',
+ 'Is there anything you''ve lost recently — a relationship, a version of yourself, a plan — that you haven''t fully processed yet?',
+ NULL,
+ 'self', 'direct', 4),
+
+-- unresolved_feeling
+('unresolved_feeling',
+ 'Is there anything you''re carrying right now that you haven''t said out loud to anyone?',
+ NULL,
+ 'self', 'direct', 5);
+
+-- RLS
+ALTER TABLE socratic_question_templates ENABLE ROW LEVEL SECURITY;
+-- Public read — these are templates, not user data
+CREATE POLICY "Public read socratic templates"
+    ON socratic_question_templates FOR SELECT
+    USING (true);
+
+-- Index
+CREATE INDEX idx_socratic_signal_type
+    ON socratic_question_templates(signal_type, intensity);
+
+-- ------------------------------------------------------------
 -- Seed: TJ facts from 2026-03-10 session
 -- (replace owner_user_id and person_id with real values)
 -- ------------------------------------------------------------
