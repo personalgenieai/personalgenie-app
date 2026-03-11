@@ -3,7 +3,7 @@
 
 | | |
 |---|---|
-| **Version** | 9.4 — Socratic Onboarding |
+| **Version** | 9.5 — Network Signal Intelligence + Consent-on-Demand |
 | **Status** | Build-Ready |
 | **Date** | March 2026 (updated 2026-03-10) |
 | **Platform** | Apple Ecosystem — iPhone · Apple Watch · Mac |
@@ -1564,6 +1564,157 @@ Each person receives a suggestion that feels perfectly calibrated to them. Neith
 
 ---
 
+### 11.5 Network Signal Intelligence
+
+Beyond bilateral pairs, the Genie aggregates signals about a person from every node in the network that has mentioned them — with permission. This is the product's core network effect: **the more people in your orbit on PersonalGenie, the smarter your Genie becomes about the people you share.**
+
+**The example:**
+- Anjali (sister-in-law) has a conversation with her niece Jiya
+- Anjali's Genie extracts a signal: *"Jiya has an upcoming date she's excited about"*
+- Leo (Jiya's uncle) is connected to Anjali in the permission graph
+- Leo's Genie wants to surface a moment: Leo checking in on Jiya
+- Before surfacing anything, Leo's Genie requests Anjali's consent
+- Anjali says yes → Leo gets a specific, human suggestion he couldn't have generated alone
+
+**What Leo's Genie surfaces (after consent):**
+
+> *"Your niece Jiya has something exciting coming up — sounds like a date she's been looking forward to. You haven't really talked with her about that side of her life before. As her gay uncle, you might be exactly the person she'd want to talk to — probably easier than her parents. She's studying abroad, navigating all of this far from home. Worth reaching out."*
+
+Four separate data points — signal from Anjali, Leo's relationship to Jiya, Leo's personal attributes, interaction history — synthesised into one specific, emotionally intelligent suggestion. None of those sources could have produced it alone.
+
+---
+
+### 11.6 Consent-on-Demand Protocol
+
+Network signals about third parties require **explicit, in-context consent from the signal source before they can be used**. This is not a blanket permission set at onboarding. It is a specific ask, at the moment of use, for the specific thing being shared.
+
+#### The Flow
+
+```
+Step 1 — Signal extracted, quarantined
+  Anjali's Genie extracts signal about Jiya from their conversation.
+  Signal stored in third_party_signals with status: PENDING_CONSENT.
+  Signal cannot flow to any other Genie until consent is granted.
+
+Step 2 — Consent request generated
+  Leo's Genie identifies the signal and wants to use it.
+  Generates a consent_request to Anjali's Genie:
+  {
+    "requesting_genie": Leo's Genie,
+    "about_person": Jiya,
+    "beneficiary": Leo,
+    "proposed_share": "Jiya has an upcoming date she's excited about",
+    "purpose": "suggest Leo check in with Jiya",
+    "expires_at": 7 days
+  }
+
+Step 3 — Anjali's Genie asks Anjali
+  Conversationally, at her next natural session or via WhatsApp:
+  "Leo's Genie picked up that Jiya has something exciting coming up
+   and thinks it might be a nice moment for Leo to reach out.
+   I'd share that she has a date she's been looking forward to —
+   nothing more specific than that. Want me to pass it along?"
+
+Step 4a — Anjali says YES
+  → signal_consent_requests.status = GRANTED
+  → third_party_signals.consent_status = GRANTED
+  → audit log entry written (immutable)
+  → Leo's Genie surfaces the moment
+  → Leo never knows a consent request happened
+
+Step 4b — Anjali says NO
+  → signal_consent_requests.status = DENIED
+  → signal is permanently blocked for this use
+  → Leo's Genie drops the moment entirely
+  → Leo never knows the signal existed
+  → Anjali's denial is logged in her own transparency view only
+```
+
+#### What Anjali Sees
+
+The consent ask shows Anjali **exactly** what would be shared — the abstracted signal, not the raw conversation. She is never asked to approve a vague category. She approves a specific sentence.
+
+She can also respond with nuance:
+- *"Yes, share it"* → full signal flows
+- *"Yes, but just say she's doing well — not the dating part"* → Anjali's Genie modifies the signal before release
+- *"No"* → signal blocked permanently for this request
+- *"Not yet — ask me again in a week"* → request snoozed, re-asked at Anjali's next session
+
+#### The Audit Trail
+
+Every consent decision is immutable and permanently logged:
+
+```sql
+CREATE TABLE signal_consent_requests (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  signal_id             UUID NOT NULL REFERENCES third_party_signals(id),
+  requesting_user_id    UUID NOT NULL REFERENCES users(id),
+  -- whose Genie wants to use the signal (Leo)
+  granting_user_id      UUID NOT NULL REFERENCES users(id),
+  -- whose Genie extracted the signal (Anjali)
+  about_person_id       UUID REFERENCES people(id),
+  -- who the signal is about (Jiya)
+  beneficiary_user_id   UUID NOT NULL REFERENCES users(id),
+  -- who would receive the surfaced moment (Leo)
+
+  proposed_share_text   TEXT NOT NULL,
+  -- exactly what would be shared — shown to Anjali verbatim
+
+  purpose_text          TEXT NOT NULL,
+  -- why — shown to Anjali: "suggest Leo check in with Jiya"
+
+  status                TEXT NOT NULL DEFAULT 'pending',
+  -- pending | granted | denied | snoozed | expired | modified
+
+  modified_share_text   TEXT,
+  -- if Anjali approved but with edits — what actually flows
+
+  requested_at          TIMESTAMPTZ DEFAULT NOW(),
+  responded_at          TIMESTAMPTZ,
+  expires_at            TIMESTAMPTZ NOT NULL,
+  -- signal expires if Anjali doesn't respond — moment never surfaces
+
+  granting_user_note    TEXT
+  -- optional: Anjali's own note about her decision
+);
+
+-- Immutable audit log — append only, never updated
+CREATE TABLE signal_consent_audit_log (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  consent_request_id UUID NOT NULL REFERENCES signal_consent_requests(id),
+  event_type        TEXT NOT NULL,
+  -- requested | granted | denied | snoozed | expired | modified | used | revoked
+  actor_user_id     UUID NOT NULL REFERENCES users(id),
+  event_detail      TEXT,
+  -- human-readable: "Anjali granted permission to share date signal with Leo"
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+  -- NO updated_at — this table is append-only
+);
+```
+
+#### Three Guarantees
+
+**1. Leo never knows if Anjali said no.**
+The moment simply never surfaces. There is no *"your contact declined to share."* The signal disappears silently.
+
+**2. Anjali always knows what she approved.**
+Her transparency view shows every consent she has granted or denied, the exact text that was shared, and when it was used. She can revoke at any time — which removes the signal from Leo's Genie going forward, though it cannot un-surface a moment already delivered.
+
+**3. The signal never flows without an audit trail.**
+Every use of a network signal has a corresponding `signal_consent_audit_log` entry. If Anjali ever asks *"what have you shared about Jiya with others?"* — her Genie can answer completely and accurately.
+
+---
+
+### 11.7 Network Intelligence Permissions Model
+
+**One hop (launch):** Signals only flow between directly connected nodes. Anjali must have a direct permission relationship with Leo. This is auditable and understandable.
+
+**Two hops (Phase 2):** A signal from Anjali about Jiya flows to Leo at full confidence. A signal from Anjali's friend about Jiya flows to Leo at 0.5 confidence, with softer language. The Genie surfaces lower-confidence signals with appropriate hedging: *"I've heard through the network that Jiya might have something exciting going on..."*
+
+**The about-person opt-out:** Jiya (if she joins PersonalGenie) can set her signal permission to level 0 — which stops signals about her propagating to anyone in the network, regardless of what others have extracted. Her signal sovereignty is absolute.
+
+---
+
 ## 12. Social Onboarding & Network Effects
 
 ### 12.1 Cold Start Problem
@@ -1634,7 +1785,21 @@ The user has complete, unmediated control over their vault:
 - **Skill permissions:** view and revoke each skill's read/write permissions independently
 - **Genie pairings:** view all active pairings, see what signal types are enabled, unpair instantly
 
-### 13.4 What We Never Do
+### 13.4 Network Signal Privacy Guarantees
+
+Third-party network signals (Section 11.5–11.7) are subject to additional privacy rules beyond the core architecture:
+
+| Guarantee | Implementation |
+|---|---|
+| **No signal flows without explicit consent** | All third_party_signals start with status PENDING_CONSENT. Cannot be used until granting_user approves. |
+| **Consent is specific, not blanket** | Every consent request shows the exact abstracted text that would be shared. No categorical approvals. |
+| **The about-person is never identifiable from the signal** | signal_abstract contains structured facts only — no names, no verbatim quotes, no identifying details beyond what the beneficiary already knows |
+| **Denial is invisible to the requester** | If Anjali says no, Leo's moment never surfaces. Leo receives no indication a signal existed. |
+| **Audit trail is immutable** | signal_consent_audit_log is append-only. Every consent decision is permanently recorded. |
+| **The about-person can opt out** | If Jiya joins PersonalGenie, she can set signal permission = 0 and stop all signals about her propagating across the network — regardless of what others have extracted. |
+| **Consent can be revoked** | Anjali can revoke a granted consent at any time. Removes the signal going forward; cannot un-surface moments already delivered. |
+
+### 13.5 What We Never Do
 
 - Store raw audio beyond the 30-second processing window
 - Send raw vault data to any cloud service
@@ -1642,6 +1807,9 @@ The user has complete, unmediated control over their vault:
 - Use personal data to train models
 - Sell or licence any user data
 - Allow skills to access vault domains outside their declared scope
+- Use a network signal without documented consent from its source
+- Surface a moment to User A based on a signal User B denied sharing
+- Tell User A that User B declined to share a signal about a third party
 
 ---
 
