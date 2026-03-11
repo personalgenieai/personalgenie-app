@@ -13,7 +13,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from routers import auth, consent, messages, voice, invites, people, health, spotify, permissions, rules, push, billing, trainer
+from routers import auth, consent, messages, voice, invites, people, health, spotify, permissions, rules, push, billing, trainer, mac
 from routers.ingestion import router as ingestion_router
 from routers.analyze import router as analyze_router
 from services.icalendar_processor import router as calendar_router
@@ -67,6 +67,7 @@ app.include_router(ingestion_router)
 app.include_router(calendar_router)
 app.include_router(maps_router)
 app.include_router(analyze_router)
+app.include_router(mac.router)
 
 
 @app.get("/health")

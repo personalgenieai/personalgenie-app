@@ -113,26 +113,27 @@ async def start(body: StartRequest, background_tasks: BackgroundTasks):
 
 
 @router.get("/google/url")
-async def google_auth_url(request: Request):
+async def google_auth_url(request: Request, user_id: str | None = None):
     """
     iOS app: returns the Google OAuth URL as JSON so the app can open it via Linking.
-    Requires X-App-Token for auth; uses the authenticated user's ID for state.
+    Auth: X-App-Token header (authenticated flow) OR user_id query param (anonymous MVP flow).
     """
     token = request.headers.get("X-App-Token")
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing X-App-Token")
-    payload = verify_app_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if token:
+        payload = verify_app_token(token)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        uid = payload["user_id"]
+    elif user_id:
+        uid = user_id
+    else:
+        raise HTTPException(status_code=401, detail="Missing X-App-Token or user_id")
 
-    user_id = payload["user_id"]
-    user = db.get_user_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = db.get_user_by_id(uid)
+    phone = user.get("phone", "") if user else ""
+    name = user.get("name", "") if user else ""
 
-    phone = user.get("phone", "")
-    name = user.get("name", "")
-    encoded_state = _encode_state(user_id, phone, name)
+    encoded_state = _encode_state(uid, phone, name)
     flow = _build_google_flow()
     auth_url, _ = flow.authorization_url(
         state=encoded_state,

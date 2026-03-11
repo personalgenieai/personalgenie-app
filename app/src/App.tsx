@@ -21,8 +21,11 @@ export default function App() {
   const [hasInsights, setHasInsights] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem('pg_insights').then(val => {
-      setHasInsights(!!val);
+    Promise.all([
+      AsyncStorage.getItem('pg_insights_batch'),
+      AsyncStorage.getItem('pg_insights'),
+    ]).then(([batch, single]) => {
+      setHasInsights(!!(batch || single));
       setReady(true);
     });
   }, []);
