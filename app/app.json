@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Personal Genie",
+    "slug": "personalgenie",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0D0B14"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.personalgenie.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0D0B14"
+      },
+      "package": "com.personalgenie.app"
+    },
+    "plugins": []
+  }
+}

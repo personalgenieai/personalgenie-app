@@ -1,0 +1,28 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-dotenv==1.0.0
+supabase==2.10.0
+anthropic==0.40.0
+openai==1.55.0
+twilio==9.3.0
+httpx==0.27.0
+python-multipart==0.0.12
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.154.0
+requests==2.32.0
+apscheduler==3.10.4
+pydantic==2.10.0
+pydantic-settings==2.6.0
+python-jose[cryptography]==3.3.0
+aiofiles==24.1.0
+# ── Stripe billing ─────────────────────────────────────────────────────────────
+stripe==11.3.0
+# ── APNs push notifications ────────────────────────────────────────────────────
+PyJWT[crypto]==2.8.0
+cryptography>=44.0.1
+# ── Plaid financial integration ────────────────────────────────────────────────
+plaid-python==28.1.0
+# ── Apple TV (pyatv) ───────────────────────────────────────────────────────────
+pyatv==0.17.0
